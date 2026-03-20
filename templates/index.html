@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Cracker - Educational Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Password Cracker Demo</h1>
+            <p class="warning">⚠️ Educational Purpose Only - Use Responsibly</p>
+        </header>
+
+        <div class="main-content">
+            <!-- File Upload Section -->
+            <div class="card">
+                <h2>📁 Upload Hash File</h2>
+                <p>Upload a text file containing a hash value</p>
+                
+                <div class="upload-area" id="dropZone">
+                    <input type="file" id="fileInput" accept=".txt">
+                    <label for="fileInput" class="upload-label">
+                        <span class="upload-icon">📄</span>
+                        <span>Click to browse or drag & drop</span>
+                        <span class="file-info">Supported: .txt files with hash</span>
+                    </label>
+                </div>
+
+                <div id="fileInfo" class="file-info-display hidden">
+                    <h3>Uploaded Hash:</h3>
+                    <pre id="hashContent"></pre>
+                    <p>Hash Type: <span id="hashType"></span></p>
+                </div>
+            </div>
+
+            <!-- Manual Hash Input -->
+            <div class="card">
+                <h2>✏️ Or Enter Hash Manually</h2>
+                <input type="text" id="manualHash" placeholder="Enter hash value (e.g., 5f4dcc3b5aa765d61d8327deb882cf99)">
+                <select id="manualHashType">
+                    <option value="auto">Auto-detect</option>
+                    <option value="md5">MD5</option>
+                    <option value="sha1">SHA1</option>
+                    <option value="sha256">SHA256</option>
+                    <option value="sha512">SHA512</option>
+                </select>
+            </div>
+
+            <!-- Crack Button -->
+            <button id="crackBtn" class="crack-btn" disabled>
+                <span class="btn-icon">⚡</span>
+                Start Cracking
+            </button>
+
+            <!-- Progress Section -->
+            <div id="progressSection" class="hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <p id="progressStatus">Cracking password...</p>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsSection" class="hidden">
+                <div class="card success">
+                    <h2>✅ Password Found!</h2>
+                    <div class="result-item">
+                        <label>Password:</label>
+                        <code id="resultPassword"></code>
+                        <button class="copy-btn" onclick="copyToClipboard('resultPassword')">📋</button>
+                    </div>
+                    <div class="result-item">
+                        <label>Cracked Hash Type:</label>
+                        <span id="resultHashType"></span>
+                    </div>
+                    <div class="result-item">
+                        <label>Cracked Hash:</label>
+                        <code id="resultHash"></code>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🔢 All Hash Variations</h3>
+                    <div class="hash-list">
+                        <div class="hash-item">
+                            <span class="hash-label">MD5:</span>
+                            <code id="hashMd5"></code>
+                        </div>
+                        <div class="hash-item">
+                            <span class="hash-label">SHA1:</span>
+                            <code id="hashSha1"></code>
+                        </div>
+                        <div class="hash-item">
+                            <span class="hash-label">SHA256:</span>
+                            <code id="hashSha256"></code>
+                        </div>
+                        <div class="hash-item">
+                            <span class="hash-label">SHA512:</span>
+                            <code id="hashSha512"></code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Not Found Section -->
+            <div id="notFoundSection" class="hidden">
+                <div class="card error">
+                    <h2>❌ Password Not Found</h2>
+                    <p>The hash was not found in our common password list.</p>
+                    <p>Try with a more common password or different hash type.</p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>⚠️ This tool is for educational purposes only. Only use on systems you own or have permission to test.</p>
+        </footer>
+    </div>
+
+    <script>
+        let currentHash = '';
+        let currentHashType = '';
+
+        // Drag and drop functionality
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const crackBtn = document.getElementById('crackBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        const hashContent = document.getElementById('hashContent');
+        const hashType = document.getElementById('hashType');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // Manual hash input
+        const manualHash = document.getElementById('manualHash');
+        const manualHashType = document.getElementById('manualHashType');
+
+        manualHash.addEventListener('input', () => {
+            if (manualHash.value.trim()) {
+                currentHash = manualHash.value.trim();
+                currentHashType = manualHashType.value;
+                fileInfo.classList.add('hidden');
+                crackBtn.disabled = false;
+            } else {
+                crackBtn.disabled = true;
+            }
+        });
+
+        manualHashType.addEventListener('change', () => {
+            if (manualHash.value.trim()) {
+                currentHashType = manualHashType.value;
+            }
+        });
+
+        function handleFile(file) {
+            if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const content = e.target.result.trim();
+                    
+                    // Upload file to server
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            currentHash = data.hash;
+                            currentHashType = data.hash_type;
+                            hashContent.textContent = data.hash;
+                            hashType.textContent = data.hash_type;
+                            fileInfo.classList.remove('hidden');
+                            crackBtn.disabled = false;
+                            
+                            // Clear manual input
+                            manualHash.value = '';
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        alert('Error uploading file: ' + error);
+                    });
+                };
+                reader.readAsText(file);
+            } else {
+                alert('Please upload a .txt file');
+            }
+        }
+
+        // Crack button functionality
+        crackBtn.addEventListener('click', () => {
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('resultsSection').classList.add('hidden');
+            document.getElementById('notFoundSection').classList.add('hidden');
+            
+            let progress = 0;
+            const progressFill = document.getElementById('progressFill');
+            const progressStatus = document.getElementById('progressStatus');
+            
+            const interval = setInterval(() => {
+                progress += 2;
+                progressFill.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                }
+            }, 100);
+
+            fetch('/crack', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    hash: currentHash,
+                    hash_type: currentHashType
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                clearInterval(interval);
+                progressFill.style.width = '100%';
+                
+                setTimeout(() => {
+                    document.getElementById('progressSection').classList.add('hidden');
+                    
+                    if (data.success) {
+                        document.getElementById('resultPassword').textContent = data.password;
+                        document.getElementById('resultHashType').textContent = data.cracked_hash_type;
+                        document.getElementById('resultHash').textContent = data.cracked_hash;
+                        
+                        document.getElementById('hashMd5').textContent = data.all_hashes.md5;
+                        document.getElementById('hashSha1').textContent = data.all_hashes.sha1;
+                        document.getElementById('hashSha256').textContent = data.all_hashes.sha256;
+                        document.getElementById('hashSha512').textContent = data.all_hashes.sha512;
+                        
+                        document.getElementById('resultsSection').classList.remove('hidden');
+                    } else {
+                        document.getElementById('notFoundSection').classList.remove('hidden');
+                    }
+                }, 500);
+            })
+            .catch(error => {
+                clearInterval(interval);
+                alert('Error: ' + error);
+            });
+        });
+
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+    </script>
+</body>
+</html>
